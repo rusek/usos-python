@@ -68,7 +68,6 @@ except StopIteration:
         scopes='studies|offline_access|cards|crstests|email|grades|mobile_numbers|photo|placement_tests|slips|'
                'student_exams'
     ))
-    response = dict(urlparse.parse_qsl(response))
     token = response['oauth_token'], response['oauth_token_secret']
     link = client.base_url + 'services/oauth/authorize?oauth_token=' + response['oauth_token']
     subprocess.check_call(['nohup', 'firefox', '-new-window', link], stdin=open('/dev/null'), stdout=open('/dev/null'),
@@ -79,7 +78,6 @@ except StopIteration:
     response = client.call_method('services/oauth/access_token', dict(
         oauth_verifier=oauth_verifier
     ))
-    response = dict(urlparse.parse_qsl(response))
 
     token = response['oauth_token'], response['oauth_token_secret']
     client.token = token

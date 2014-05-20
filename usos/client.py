@@ -1,4 +1,5 @@
 from urllib import urlencode, quote, splittype, splithost, splitport
+import urlparse
 import json
 import time
 import random
@@ -17,6 +18,7 @@ from .utils.http import CA_CERTS_FILE, HTTPSVerifyingConnection
 ALLOW_INSECURE_CONNECTIONS = False
 
 FILE_METHODS = frozenset(['services/users/photo', 'services/photos/photo'])
+URLENCODED_METHODS = frozenset(['services/oauth/request_token', 'services/oauth/access_token'])
 
 
 Consumer = namedtuple('Consumer', ['key', 'secret'])
@@ -170,17 +172,17 @@ class Client(object):
     def _prep_request(self, path, params):
         return self.base_url + path, self._prep_headers(), urlencode(list(self._prep_params(params)))
 
-    def call_method(self, path, params, mode=None):
+    def call_method(self, path, params=None, mode=None):
         if mode is None:
-            file_mode = path in FILE_METHODS
-        # in case FILE_METHODS is out-of-date
-        elif mode == 'file':
-            file_mode = True
-        else:
-            raise ValueError('Invalid mode: {0!r}'.format(mode))
-        return self._call_method(path, params, file_mode)
+            if path in FILE_METHODS:
+                mode = 'file'
+            elif path in URLENCODED_METHODS:
+                mode = 'urlencoded'
+            else:
+                mode = 'format'
+        return self._call_method(path, params, mode)
 
-    def _call_method(self, path, params, file_mode):
+    def _call_method(self, path, params, mode):
         url, headers, body = self._prep_request(path, params)
 
         # It would be nice to use high-level network interface here, like urllib2, but there is no way
@@ -209,17 +211,16 @@ class Client(object):
 
         content_type = response.getheader('content-type', '')
         if response.status == 200:
-            if file_mode:
+            if mode == 'file':
                 return FileWrapper(response)
+            elif mode == 'urlencoded':
+                return dict(urlparse.parse_qsl(response.read()))
             elif content_type.startswith('application/json'):
                 try:
                     return json.load(response)
                 except ValueError as err:
                     raise ProtocolError(str(err))
-            elif content_type.startswith('text/plain'):
-                return response.read()
             else:
-                # Files should be handled explicitly - we don't want to parse JSON file
                 raise ProtocolError('Invalid response content type: {0}'.format(content_type))
         else:
             if content_type.startswith('application/json'):
@@ -240,6 +241,9 @@ class Client(object):
                 raise HttpError(response.status, params['message'])
 
     def _prep_params(self, params):
+        if not params:
+            return
+
         for k, v in params.iteritems():
             if v is True:
                 v = 'true'
